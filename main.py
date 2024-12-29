@@ -423,7 +423,6 @@ def ff_train(model,
 # TRAINING
 ######################################################
 if __name__ == "__main__":
-    # Example usage of the vanilla_train:
     vanilla_final_loss, vanilla_test_curve, vanilla_time, vanilla_flops = vanilla_train(
         model, train_dataloader, test_dataloader, num_epochs=2, device=device
     )
@@ -434,13 +433,12 @@ if __name__ == "__main__":
     if validation_batch is None:
         raise ValueError("No validation data found!")
 
-    # Example usage of ff_train (passing final_vanilla_loss as stopping criterion):
     ff_final_loss, ff_test_curve, ff_time, ff_flops = ff_train(
         model,
         train_dataloader,
         test_dataloader,
         validation_batch,
         final_vanilla_loss=vanilla_final_loss,
-        Tinterval=3,  # do a few steps before each "fast forward" attempt
+        Tinterval=6,  # do a few steps before each "fast forward" attempt
         device=device
     )
