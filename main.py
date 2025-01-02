@@ -118,13 +118,13 @@ test_stream = test_stream.shuffle(seed=42, buffer_size=10_000)
 validation_stream = train_stream_all.take(30)
 train_stream = train_stream_all.skip(30)
 
-train_set_full = UltraChatIterableDataset(train_stream)
-test_set_full = UltraChatIterableDataset(test_stream)
-validation_set_full = UltraChatIterableDataset(validation_stream)
+train_set = UltraChatIterableDataset(train_stream)
+test_set = UltraChatIterableDataset(test_stream)
+validation_set = UltraChatIterableDataset(validation_stream)
 
-train_set = LimitDataset(train_set_full, limit=50)
-validation_set = LimitDataset(validation_set_full, limit=10)
-test_set = LimitDataset(test_set_full, limit=20)
+# train_set = LimitDataset(train_set_full, limit=50)
+# validation_set = LimitDataset(validation_set_full, limit=10)
+# test_set = LimitDataset(test_set_full, limit=20)
 
 def collate_fn(batch):
     input_ids = torch.tensor([ex["input_ids"] for ex in batch], dtype=torch.long)
@@ -138,9 +138,9 @@ def collate_fn(batch):
 
 data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, model=model)
 
-train_dataloader = DataLoader(train_set, batch_size=4, shuffle=False, collate_fn=collate_fn)
-test_dataloader = DataLoader(test_set, batch_size=4, shuffle=False, collate_fn=collate_fn)
-validation_dataloader = DataLoader(validation_set, batch_size=4, shuffle=False, collate_fn=collate_fn)
+train_dataloader = DataLoader(train_set, batch_size=30, shuffle=False, collate_fn=collate_fn)
+test_dataloader = DataLoader(test_set, batch_size=30, shuffle=False, collate_fn=collate_fn)
+validation_dataloader = DataLoader(validation_set, batch_size=30, shuffle=False, collate_fn=collate_fn)
 
 ######################################################
 # FLOP-RELATED HELPER FUNCTIONS
