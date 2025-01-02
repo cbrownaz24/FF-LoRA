@@ -111,9 +111,12 @@ class LimitDataset(IterableDataset):
             yield item
             count += 1
 
-train_stream = load_dataset("HuggingFaceH4/ultrachat_200k", split='train_sft', streaming=True)
+train_stream_all = load_dataset("HuggingFaceH4/ultrachat_200k", split='train_sft', streaming=True)
 test_stream = load_dataset("HuggingFaceH4/ultrachat_200k", split='test_sft', streaming=True)
-validation_stream = load_dataset("HuggingFaceH4/ultrachat_200k", split="train_sft", streaming=True)
+train_stream_all = train_stream_all.shuffle(seed=42, buffer_size=10_000)
+test_stream = test_stream.shuffle(seed=42, buffer_size=10_000)
+validation_stream = train_stream_all.take(30)
+train_stream = train_stream_all.skip(30)
 
 train_set_full = UltraChatIterableDataset(train_stream)
 test_set_full = UltraChatIterableDataset(test_stream)
@@ -293,12 +296,12 @@ def fast_forward_step(model, delta_weights):
         param.data.add_(delta_weights[name])
     return model
 
-def ff_train(model, 
-             train_dataloader, 
-             test_dataloader, 
-             validation_batch, 
+def ff_train(model,
+             train_dataloader,
+             test_dataloader,
+             validation_batch,
              final_vanilla_loss,
-             Tinterval=5, 
+             Tinterval=5,
              device='cuda'):
     """
     Implements "fast forward" training and logs key metrics to Weights & Biases.
