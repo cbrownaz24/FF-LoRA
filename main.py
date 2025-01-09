@@ -181,7 +181,7 @@ def compute_avg_loss(model, dataloader, device):
                 attention_mask=batch['attention_mask'],
                 labels=batch['labels']
             )
-            total_loss += outputs.loss
+            total_loss += outputs.loss.item()
             total_batches += 1
     model.train()
     if total_batches == 0:
