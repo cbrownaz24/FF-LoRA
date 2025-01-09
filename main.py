@@ -173,6 +173,7 @@ def compute_avg_loss(model, dataloader, device):
     total_test_loss = 0
     total_batches = 0
     model.eval()
+    total_loss = 0.0
     with torch.no_grad():
         for batch in dataloader:
             batch = {k: v.to(device) for k, v in batch.items()}
