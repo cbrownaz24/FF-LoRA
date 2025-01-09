@@ -168,7 +168,6 @@ def train_step(model, batch, optimizer, device):
     return loss.item()
 
 def compute_avg_loss(model, dataloader, device):
-    total_test_loss = 0
     total_batches = 0
     model.eval()
     total_loss = 0.0
@@ -185,7 +184,7 @@ def compute_avg_loss(model, dataloader, device):
     model.train()
     if total_batches == 0:
         return torch.tensor(0.0, device=device)
-    return total_test_loss / total_batches
+    return total_loss / total_batches
 
 ######################################################
 # VANILLA TRAINING WITH W&B LOGGING
@@ -455,9 +454,9 @@ def train_process(local_rank, args):
     # train_set = LimitDataset(train_set, limit=20000)
 
     # Build DataLoaders
-    train_dataloader = DataLoader(train_set, batch_size=16, collate_fn=collate_fn, num_workers=1, pin_memory=True)
-    test_dataloader = DataLoader(test_set, batch_size=16, collate_fn=collate_fn, num_workers=1, pin_memory=True)
-    validation_dataloader = DataLoader(validation_set, batch_size=16, collate_fn=collate_fn, num_workers=1, pin_memory=True)
+    train_dataloader = DataLoader(train_set, batch_size=args.batch_size, collate_fn=collate_fn, num_workers=1, pin_memory=True)
+    test_dataloader = DataLoader(test_set, batch_size=args.batch_size, collate_fn=collate_fn, num_workers=1, pin_memory=True)
+    validation_dataloader = DataLoader(validation_set, batch_size=args.batch_size, collate_fn=collate_fn, num_workers=1, pin_memory=True)
 
     # Wrap vanilla model in DDP
     model_vanilla = copy.deepcopy(model)
@@ -496,6 +495,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--num_gpus", type=int, default=1)
     parser.add_argument("--num_epochs", type=int, default=2)
+    parser.add_argument("--batch_size", type=int, default=4)
     args = parser.parse_args()
 
     local_rank = int(os.environ.get("LOCAL_RANK", 0))
