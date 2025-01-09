@@ -125,15 +125,11 @@ class LimitDataset(IterableDataset):
             yield item
             count += 1
 
-def collate_fn(batch):
+def collate_fn(batch, device="cuda"):
     input_ids = torch.tensor([ex["input_ids"] for ex in batch], dtype=torch.long)
     attention_mask = torch.tensor([ex["attention_mask"] for ex in batch], dtype=torch.long)
     labels = torch.tensor([ex["labels"] for ex in batch], dtype=torch.long)
-    return {
-        "input_ids": input_ids,
-        "attention_mask": attention_mask,
-        "labels": labels
-    }
+    return input_ids.to(device), attention_mask.to(device), labels.to(device)
 
 data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, model=base_model)
 
@@ -176,11 +172,11 @@ def compute_avg_loss(model, dataloader, device):
     total_loss = 0.0
     with torch.no_grad():
         for batch in dataloader:
-            batch = {k: v.to(device) for k, v in batch.items()}
+            input_ids, attention_mask, labels = batch
             outputs = model(
-                input_ids=batch['input_ids'],
-                attention_mask=batch['attention_mask'],
-                labels=batch['labels']
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                labels=labels
             )
             total_loss += outputs.loss.item()
             total_batches += 1
@@ -459,9 +455,9 @@ def train_process(local_rank, args):
     # train_set = LimitDataset(train_set, limit=20000)
 
     # Build DataLoaders
-    train_dataloader = DataLoader(train_set, batch_size=16, collate_fn=collate_fn)
-    test_dataloader = DataLoader(test_set, batch_size=16, collate_fn=collate_fn)
-    validation_dataloader = DataLoader(validation_set, batch_size=16, collate_fn=collate_fn)
+    train_dataloader = DataLoader(train_set, batch_size=16, collate_fn=collate_fn, num_workers=local_rank, pin_memory=True)
+    test_dataloader = DataLoader(test_set, batch_size=16, collate_fn=collate_fn, num_workers=local_rank, pin_memory=True)
+    validation_dataloader = DataLoader(validation_set, batch_size=16, collate_fn=collate_fn, num_workers=local_rank, pin_memory=True)
 
     # Wrap vanilla model in DDP
     model_vanilla = copy.deepcopy(model)
