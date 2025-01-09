@@ -232,10 +232,12 @@ def vanilla_train(model, train_dataloader, test_dataloader, num_epochs=5, device
     global_step = 0
     avg_test_loss = 0.0  # just to have a default
 
+    print("Starting epoch loop")
     for epoch in range(num_epochs):
         total_train_loss = 0
         batch_idx = 0
 
+        print(f"Starting epoch {epoch + 1}")
         for batch in train_dataloader:
             total_flops += train_flops
             loss = train_step(model, batch, optimizer)
