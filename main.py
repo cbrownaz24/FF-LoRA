@@ -125,11 +125,11 @@ class LimitDataset(IterableDataset):
             yield item
             count += 1
 
-def collate_fn(batch, device="cuda"):
+def collate_fn(batch):
     input_ids = torch.tensor([ex["input_ids"] for ex in batch], dtype=torch.long)
     attention_mask = torch.tensor([ex["attention_mask"] for ex in batch], dtype=torch.long)
     labels = torch.tensor([ex["labels"] for ex in batch], dtype=torch.long)
-    return input_ids.to(device), attention_mask.to(device), labels.to(device)
+    return input_ids, attention_mask, labels
 
 data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, model=base_model)
 
@@ -174,9 +174,9 @@ def compute_avg_loss(model, dataloader, device):
         for batch in dataloader:
             input_ids, attention_mask, labels = batch
             outputs = model(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                labels=labels
+                input_ids=input_ids.to(device),
+                attention_mask=attention_mask.to(device),
+                labels=labels.to(device)
             )
             total_loss += outputs.loss.item()
             total_batches += 1
