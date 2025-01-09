@@ -136,9 +136,10 @@ data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, model=base_model)
 ######################################################
 # FLOP-RELATED HELPER FUNCTIONS
 ######################################################
-def compute_flops(model, batch, mode='evaluation'):
+def compute_flops(model, batch, device, mode='evaluation'):
     try:
-        analysis = FlopCountAnalysis(model, batch["input_ids"])
+        input_ids, _, _ = batch
+        analysis = FlopCountAnalysis(model, input_ids.to(device))
         analysis.tracer_warnings('none')  # Suppress warnings
         forward_flops = analysis.total()
         if mode == 'training':
@@ -164,7 +165,7 @@ def train_step(model, batch, optimizer, device):
     loss.backward()
     optimizer.step()
     optimizer.zero_grad()
-    return loss
+    return loss.item()
 
 def compute_avg_loss(model, dataloader, device):
     total_test_loss = 0
@@ -220,7 +221,7 @@ def vanilla_train(model, train_dataloader, test_dataloader, num_epochs=5, device
     # Compute FLOPs for a sample batch
     sample_train_batch = next(iter(train_dataloader), None)
     if sample_train_batch is not None:
-        train_flops = compute_flops(model, sample_train_batch, mode="training")
+        train_flops = compute_flops(model, sample_train_batch, device, mode="training")
     else:
         train_flops = 0
 
@@ -230,26 +231,25 @@ def vanilla_train(model, train_dataloader, test_dataloader, num_epochs=5, device
     avg_test_loss = 0.0  # just to have a default
 
     for epoch in range(num_epochs):
-        total_train_loss = 0
         batch_idx = 0
 
         for batch in train_dataloader:
             total_flops += train_flops
             loss = train_step(model, batch, optimizer, device)
 
-            total_train_loss += loss.item()
             batch_idx += 1
             global_step += 1
 
             # Test loss each step
             if global_step % 10 == 0:
-                avg_test_loss = compute_avg_loss(model, test_dataloader, device).item()
+                print("Computing test loss...")
+                avg_test_loss = compute_avg_loss(model, test_dataloader, device)
             test_losses_overall.append(avg_test_loss)
 
             # Log metrics
             if is_main_process:
                 wandb.log({
-                    "train_loss": loss.item(),
+                    "train_loss": loss,
                     "test_loss": avg_test_loss,
                     "epoch": epoch + 1,
                     "step": global_step,
@@ -310,13 +310,13 @@ def ff_train(model,
     step_count = 0
 
     sample_validation_batch = next(iter(validation_dataloader), None)
-    val_flops = compute_flops(model, sample_validation_batch, mode="evaluation")
+    val_flops = compute_flops(model, sample_validation_batch, device, mode="evaluation")
 
     # Precompute FLOPs for training and validation
     sample_train_batch = next(iter(train_dataloader), None)
     if sample_train_batch is not None:
         sample_train_batch = {k: v.to(device) for k, v in sample_train_batch.items()}
-        train_flops = compute_flops(model, sample_train_batch, mode="training")
+        train_flops = compute_flops(model, sample_train_batch, device, mode="training")
     else:
         train_flops = 0
 
@@ -335,13 +335,13 @@ def ff_train(model,
             total_flops += train_flops
             loss = train_step(model, batch, optimizer, device)
 
-            avg_test_loss = compute_avg_loss(model, test_dataloader, device).item()
+            avg_test_loss = compute_avg_loss(model, test_dataloader, device)
             test_losses_overall.append(avg_test_loss)
             step_count += 1
 
             if is_main_process:
                 wandb.log({
-                    "train_loss": loss.item(),
+                    "train_loss": loss,
                     "test_loss": avg_test_loss,
                     "step_count": step_count,
                     "total_flops": total_flops,
@@ -359,7 +359,7 @@ def ff_train(model,
             fast_forward_step(model, delta_weights)
             total_flops += val_flops
 
-            avg_test_loss = compute_avg_loss(model, test_dataloader, device).item()
+            avg_test_loss = compute_avg_loss(model, test_dataloader, device)
             test_losses_overall.append(avg_test_loss)
 
             if is_main_process:
@@ -374,7 +374,7 @@ def ff_train(model,
                 break
 
             with torch.no_grad():
-                val_loss = compute_avg_loss(model, validation_dataloader, device).item()
+                val_loss = compute_avg_loss(model, validation_dataloader, device)
 
             if val_loss >= prev_val_loss:
                 break
@@ -455,9 +455,9 @@ def train_process(local_rank, args):
     # train_set = LimitDataset(train_set, limit=20000)
 
     # Build DataLoaders
-    train_dataloader = DataLoader(train_set, batch_size=16, collate_fn=collate_fn, num_workers=local_rank, pin_memory=True)
-    test_dataloader = DataLoader(test_set, batch_size=16, collate_fn=collate_fn, num_workers=local_rank, pin_memory=True)
-    validation_dataloader = DataLoader(validation_set, batch_size=16, collate_fn=collate_fn, num_workers=local_rank, pin_memory=True)
+    train_dataloader = DataLoader(train_set, batch_size=16, collate_fn=collate_fn, num_workers=1, pin_memory=True)
+    test_dataloader = DataLoader(test_set, batch_size=16, collate_fn=collate_fn, num_workers=1, pin_memory=True)
+    validation_dataloader = DataLoader(validation_set, batch_size=16, collate_fn=collate_fn, num_workers=1, pin_memory=True)
 
     # Wrap vanilla model in DDP
     model_vanilla = copy.deepcopy(model)
