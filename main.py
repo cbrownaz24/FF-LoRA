@@ -219,7 +219,6 @@ def vanilla_train(model, train_dataloader, test_dataloader, num_epochs=5, device
     # Compute FLOPs for a sample batch
     sample_train_batch = next(iter(train_dataloader), None)
     if sample_train_batch is not None:
-        sample_train_batch = {k: v.to(device) for k, v in sample_train_batch.items()}
         train_flops = compute_flops(model, sample_train_batch, mode="training")
     else:
         train_flops = 0
