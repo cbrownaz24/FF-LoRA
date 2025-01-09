@@ -3,6 +3,7 @@ import time
 import torch
 import argparse
 import itertools
+import copy
 
 import torch.distributed as dist
 import torch.multiprocessing as mp
@@ -329,7 +330,7 @@ def ff_train(model,
     start_time = time.time()
 
     while avg_test_loss > final_vanilla_loss - 0.0001:
-        # 1) SGD phase for Tinterval steps
+        # SGD phase for Tinterval steps
         prev_weights = {name: p.clone() for name, p in model.named_parameters()}
 
         train_iter = iter(train_dataloader)
@@ -355,12 +356,12 @@ def ff_train(model,
                     "tf_flops": total_flops / 1e12
                 })
 
-        # 2) Compute delta_w
+        # Compute delta_w
         delta_weights = {}
         for name, param in model.named_parameters():
             delta_weights[name] = param.clone() - prev_weights[name]
 
-        # 3) Fast Forward stage
+        # Fast Forward stage
         while True:
             fast_forward_step(model, delta_weights)
             total_flops += val_flops
@@ -419,63 +420,67 @@ def train_process(local_rank, args):
       4) Wrap the model in DDP
       5) Run training
     """
-    # 1) Initialize the process group
+    # Initialize the process group
     dist.init_process_group(backend="nccl", init_method="env://")
     
-    # 2) Set the device for this process
+    # Set the device for this process
     torch.cuda.set_device(local_rank)
     device = torch.device("cuda", local_rank)
 
     # Copy the model to this device
     model = base_model.to(device)
 
-    # 3) Load & shuffle dataset (same for every rank; no .shard())
-    #    -> Everyone sees the entire dataset
+    #  Load & shuffle dataset
     train_stream_all = load_dataset("HuggingFaceH4/ultrachat_200k",
                                     split='train_sft',
                                     streaming=True)
     test_stream_all = load_dataset("HuggingFaceH4/ultrachat_200k",
                                    split='test_sft',
                                    streaming=True)
-
-    # Just do a single shuffle globally
     train_stream_all = train_stream_all.shuffle(seed=42, buffer_size=1000)
     test_stream_all = test_stream_all.shuffle(seed=42, buffer_size=1000)
 
-    # For validation, let's take the first 30 from the train
-    validation_stream = train_stream_all.take(30)
+    # For validation, let's take the first 32 from the train
+    validation_stream = train_stream_all.take(32)
     # Then skip those so we don't re-train on them
-    train_stream = train_stream_all.skip(30)
+    train_stream = train_stream_all.skip(32)
+    # Test set is 1000 long
+    test_stream = test_stream_all.take(1000)
 
     # Wrap into IterableDatasets
     train_set = UltraChatIterableDataset(train_stream)
-    test_set = UltraChatIterableDataset(test_stream_all)
+    test_set = UltraChatIterableDataset(test_stream)
     validation_set = UltraChatIterableDataset(validation_stream)
 
     # Limit data for demonstration
-    train_set = LimitDataset(train_set, limit=20000)
-    validation_set = LimitDataset(validation_set, limit=30)
-    test_set = LimitDataset(test_set, limit=2000)
+    # train_set = LimitDataset(train_set, limit=20000)
 
     # Build DataLoaders
-    train_dataloader = DataLoader(train_set, batch_size=4, collate_fn=collate_fn)
-    test_dataloader = DataLoader(test_set, batch_size=4, collate_fn=collate_fn)
-    validation_dataloader = DataLoader(validation_set, batch_size=4, collate_fn=collate_fn)
+    train_dataloader = DataLoader(train_set, batch_size=16, collate_fn=collate_fn)
+    test_dataloader = DataLoader(test_set, batch_size=16, collate_fn=collate_fn)
+    validation_dataloader = DataLoader(validation_set, batch_size=16, collate_fn=collate_fn)
 
-    # 4) Wrap model in DDP
-    model = DDP(model, device_ids=[local_rank], output_device=local_rank)
+    # Wrap vanilla model in DDP
+    model_vanilla = copy.deepcopy(model)
+    model_vanilla = DDP(model_vanilla, device_ids=[local_rank], output_device=local_rank)
 
-    # 5) Run vanilla train
+    # Run vanilla train
     vanilla_final_loss, _, _, _ = vanilla_train(
-        model, train_dataloader, test_dataloader, num_epochs=args.num_epochs, device=device
+        model_vanilla, train_dataloader, test_dataloader, num_epochs=args.num_epochs, device=device
     )
 
     # Prepare one validation batch for FF
     validation_iter = iter(validation_dataloader)
     validation_batch = next(validation_iter, None)
+
+    # Wrap FF model in DDP
+    model_ff = copy.deepcopy(model)
+    model_ff = DDP(model_ff, device_ids=[local_rank], output_device=local_rank)
+
+    # Run FF train
     if validation_batch is not None:
         ff_train(
-            model,
+            model_ff,
             train_dataloader,
             test_dataloader,
             validation_batch,
