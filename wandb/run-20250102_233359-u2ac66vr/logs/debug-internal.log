@@ -1,0 +1,17 @@
+{"time":"2025-01-02T23:33:59.364584157Z","level":"INFO","msg":"using version","core version":"0.19.1"}
+{"time":"2025-01-02T23:33:59.364610017Z","level":"INFO","msg":"created symlink","path":"/home/connorb/FF-LoRA/wandb/run-20250102_233359-u2ac66vr/logs/debug-core.log"}
+{"time":"2025-01-02T23:33:59.576823912Z","level":"INFO","msg":"created new stream","id":"u2ac66vr"}
+{"time":"2025-01-02T23:33:59.576859932Z","level":"INFO","msg":"stream: started","id":"u2ac66vr"}
+{"time":"2025-01-02T23:33:59.576922532Z","level":"INFO","msg":"sender: started","stream_id":"u2ac66vr"}
+{"time":"2025-01-02T23:33:59.576953152Z","level":"INFO","msg":"handler: started","stream_id":"u2ac66vr"}
+{"time":"2025-01-02T23:33:59.576928632Z","level":"INFO","msg":"writer: Do: started","stream_id":"u2ac66vr"}
+{"time":"2025-01-02T23:33:59.740452255Z","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-01-02T23:34:25.728863185Z","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2025-01-02T23:34:25.730042092Z","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2025-01-02T23:34:26.057700546Z","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-01-02T23:34:26.203935941Z","level":"INFO","msg":"handler: operation stats","stats":{}}
+{"time":"2025-01-02T23:34:27.2159327Z","level":"INFO","msg":"stream: closing","id":"u2ac66vr"}
+{"time":"2025-01-02T23:34:27.2159666Z","level":"INFO","msg":"handler: closed","stream_id":"u2ac66vr"}
+{"time":"2025-01-02T23:34:27.21598033Z","level":"INFO","msg":"writer: Close: closed","stream_id":"u2ac66vr"}
+{"time":"2025-01-02T23:34:27.216045049Z","level":"INFO","msg":"sender: closed","stream_id":"u2ac66vr"}
+{"time":"2025-01-02T23:34:27.216112389Z","level":"INFO","msg":"stream: closed","id":"u2ac66vr"}

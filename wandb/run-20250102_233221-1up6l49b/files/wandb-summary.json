@@ -1,0 +1,1 @@
+{"total_flops":209752940986368,"training_time_s":92.74528384208679,"_timestamp":1.7358608364699001e+09,"_step":26,"_runtime":95.053190389,"final_tf_flops":209.752940986368,"step":26,"test_loss":12.844000816345215,"tf_flops":209.752940986368,"_wandb":{"runtime":95},"final_total_flops":209752940986368,"epoch":2,"train_loss":13.369462013244629,"final_test_loss":12.844000816345215}

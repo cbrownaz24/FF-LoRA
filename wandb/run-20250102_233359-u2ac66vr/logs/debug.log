@@ -1,0 +1,30 @@
+2025-01-02 23:33:59,362 INFO    MainThread:2601640 [wandb_setup.py:_flush():68] Current SDK version is 0.19.1
+2025-01-02 23:33:59,363 INFO    MainThread:2601640 [wandb_setup.py:_flush():68] Configure stats pid to 2601640
+2025-01-02 23:33:59,363 INFO    MainThread:2601640 [wandb_setup.py:_flush():68] Loading settings from /home/connorb/.config/wandb/settings
+2025-01-02 23:33:59,363 INFO    MainThread:2601640 [wandb_setup.py:_flush():68] Loading settings from /home/connorb/FF-LoRA/wandb/settings
+2025-01-02 23:33:59,363 INFO    MainThread:2601640 [wandb_setup.py:_flush():68] Loading settings from environment variables
+2025-01-02 23:33:59,363 INFO    MainThread:2601640 [wandb_init.py:_log_setup():528] Logging user logs to /home/connorb/FF-LoRA/wandb/run-20250102_233359-u2ac66vr/logs/debug.log
+2025-01-02 23:33:59,363 INFO    MainThread:2601640 [wandb_init.py:_log_setup():529] Logging internal logs to /home/connorb/FF-LoRA/wandb/run-20250102_233359-u2ac66vr/logs/debug-internal.log
+2025-01-02 23:33:59,363 INFO    MainThread:2601640 [wandb_init.py:init():644] calling init triggers
+2025-01-02 23:33:59,363 INFO    MainThread:2601640 [wandb_init.py:init():650] wandb.init called with sweep_config: {}
+config: {}
+2025-01-02 23:33:59,363 INFO    MainThread:2601640 [wandb_init.py:init():680] starting backend
+2025-01-02 23:33:59,363 INFO    MainThread:2601640 [wandb_init.py:init():684] sending inform_init request
+2025-01-02 23:33:59,364 INFO    MainThread:2601640 [backend.py:_multiprocessing_setup():104] multiprocessing start_methods=fork,spawn,forkserver, using: spawn
+2025-01-02 23:33:59,364 INFO    MainThread:2601640 [wandb_init.py:init():697] backend started and connected
+2025-01-02 23:33:59,366 INFO    MainThread:2601640 [wandb_init.py:init():790] updated telemetry
+2025-01-02 23:33:59,449 INFO    MainThread:2601640 [wandb_init.py:init():822] communicating run to backend with 90.0 second timeout
+2025-01-02 23:33:59,732 INFO    MainThread:2601640 [wandb_init.py:init():874] starting run threads in backend
+2025-01-02 23:33:59,823 INFO    MainThread:2601640 [wandb_run.py:_console_start():2374] atexit reg
+2025-01-02 23:33:59,823 INFO    MainThread:2601640 [wandb_run.py:_redirect():2224] redirect: wrap_raw
+2025-01-02 23:33:59,823 INFO    MainThread:2601640 [wandb_run.py:_redirect():2289] Wrapping output streams.
+2025-01-02 23:33:59,823 INFO    MainThread:2601640 [wandb_run.py:_redirect():2314] Redirects installed.
+2025-01-02 23:33:59,823 INFO    MainThread:2601640 [wandb_init.py:init():916] run started, returning control to user process
+2025-01-02 23:33:59,824 INFO    MainThread:2601640 [wandb_run.py:_config_callback():1279] config_cb None None {'learning_rate': 0.0001, 'optimizer': 'SGD', 'momentum': 0.9, 'Tinterval': 6}
+2025-01-02 23:34:25,727 INFO    MainThread:2601640 [wandb_run.py:_finish():2100] finishing run connorbrown059-princeton-university/full_cluster_training/u2ac66vr
+2025-01-02 23:34:25,727 INFO    MainThread:2601640 [wandb_run.py:_atexit_cleanup():2339] got exitcode: 0
+2025-01-02 23:34:25,728 INFO    MainThread:2601640 [wandb_run.py:_restore():2321] restore
+2025-01-02 23:34:25,728 INFO    MainThread:2601640 [wandb_run.py:_restore():2327] restore done
+2025-01-02 23:34:27,207 INFO    MainThread:2601640 [wandb_run.py:_footer_history_summary_info():3892] rendering history
+2025-01-02 23:34:27,208 INFO    MainThread:2601640 [wandb_run.py:_footer_history_summary_info():3924] rendering summary
+2025-01-02 23:34:27,215 INFO    MainThread:2601640 [wandb_run.py:_footer_sync_info():3853] logging synced files
