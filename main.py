@@ -169,19 +169,19 @@ def train_step(model, batch, optimizer):
     optimizer.zero_grad()
     return loss
 
-def compute_avg_test_loss(model, test_dataloader, device):
+def compute_avg_loss(model, dataloader, device):
     total_test_loss = 0
     total_batches = 0
     model.eval()
     with torch.no_grad():
-        for test_batch in test_dataloader:
-            test_batch = {k: v.to(device) for k, v in test_batch.items()}
+        for batch in dataloader:
+            batch = {k: v.to(device) for k, v in batch.items()}
             outputs = model(
-                input_ids=test_batch['input_ids'],
-                attention_mask=test_batch['attention_mask'],
-                labels=test_batch['labels']
+                input_ids=batch['input_ids'],
+                attention_mask=batch['attention_mask'],
+                labels=batch['labels']
             )
-            total_test_loss += outputs.loss
+            total_loss += outputs.loss
             total_batches += 1
     model.train()
     if total_batches == 0:
@@ -229,15 +229,13 @@ def vanilla_train(model, train_dataloader, test_dataloader, num_epochs=5, device
 
     total_flops = 0
     start_time = time.time()
-    global_step = 0
+    global_step = -1
     avg_test_loss = 0.0  # just to have a default
 
-    print("Starting epoch loop")
     for epoch in range(num_epochs):
         total_train_loss = 0
         batch_idx = 0
 
-        print(f"Starting epoch {epoch + 1}")
         for batch in train_dataloader:
             total_flops += train_flops
             loss = train_step(model, batch, optimizer)
@@ -247,8 +245,8 @@ def vanilla_train(model, train_dataloader, test_dataloader, num_epochs=5, device
             global_step += 1
 
             # Test loss each step
-            if global_step % 100 == 0:
-                avg_test_loss = compute_avg_test_loss(model, test_dataloader, device).item()
+            if global_step % 10 == 0:
+                avg_test_loss = compute_avg_loss(model, test_dataloader, device).item()
             test_losses_overall.append(avg_test_loss)
 
             # Log metrics
@@ -285,7 +283,7 @@ def fast_forward_step(model, delta_weights):
 def ff_train(model,
              train_dataloader,
              test_dataloader,
-             validation_batch,
+             validation_dataloader,
              final_vanilla_loss,
              Tinterval=5,
              device='cuda'):
@@ -314,18 +312,16 @@ def ff_train(model,
     prev_val_loss = float('inf')
     step_count = 0
 
-    validation_batch = {k: v.to(device) for k, v in validation_batch.items()}
+    sample_validation_batch = next(iter(validation_dataloader), None)
+    val_flops = compute_flops(model, sample_validation_batch, mode="evaluation")
 
     # Precompute FLOPs for training and validation
-    train_iter = iter(train_dataloader)
-    sample_train_batch = next(train_iter, None)
+    sample_train_batch = next(iter(train_dataloader), None)
     if sample_train_batch is not None:
         sample_train_batch = {k: v.to(device) for k, v in sample_train_batch.items()}
         train_flops = compute_flops(model, sample_train_batch, mode="training")
     else:
         train_flops = 0
-
-    val_flops = compute_flops(model, validation_batch, mode="evaluation")
 
     total_flops = 0
     start_time = time.time()
@@ -334,17 +330,15 @@ def ff_train(model,
         # SGD phase for Tinterval steps
         prev_weights = {name: p.clone() for name, p in model.named_parameters()}
 
-        train_iter = iter(train_dataloader)
-        for i in range(Tinterval):
-            batch = next(train_iter, None)
-            if batch is None:
-                break  # no more data
+        num_steps = 0
+        for batch in train_dataloader:
+            if num_steps == Tinterval:
+                break
 
-            batch = {k: v.to(device) for k, v in batch.items()}
             total_flops += train_flops
             loss = train_step(model, batch, optimizer)
 
-            avg_test_loss = compute_avg_test_loss(model, test_dataloader, device).item()
+            avg_test_loss = compute_avg_loss(model, test_dataloader, device).item()
             test_losses_overall.append(avg_test_loss)
             step_count += 1
 
@@ -356,6 +350,7 @@ def ff_train(model,
                     "total_flops": total_flops,
                     "tf_flops": total_flops / 1e12
                 })
+            num_steps += 1
 
         # Compute delta_w
         delta_weights = {}
@@ -367,7 +362,7 @@ def ff_train(model,
             fast_forward_step(model, delta_weights)
             total_flops += val_flops
 
-            avg_test_loss = compute_avg_test_loss(model, test_dataloader, device).item()
+            avg_test_loss = compute_avg_loss(model, test_dataloader, device).item()
             test_losses_overall.append(avg_test_loss)
 
             if is_main_process:
@@ -382,12 +377,7 @@ def ff_train(model,
                 break
 
             with torch.no_grad():
-                outputs = model(
-                    input_ids=validation_batch['input_ids'],
-                    attention_mask=validation_batch['attention_mask'],
-                    labels=validation_batch['labels']
-                )
-                val_loss = outputs.loss.item()
+                val_loss = compute_avg_loss(model, validation_dataloader, device).item()
 
             if val_loss >= prev_val_loss:
                 break
@@ -481,27 +471,23 @@ def train_process(local_rank, args):
         model_vanilla, train_dataloader, test_dataloader, num_epochs=args.num_epochs, device=device
     )
 
-    # Prepare one validation batch for FF
-    validation_iter = iter(validation_dataloader)
-    validation_batch = next(validation_iter, None)
-
     # Wrap FF model in DDP
     model_ff = copy.deepcopy(model)
     model_ff = DDP(model_ff, device_ids=[local_rank], output_device=local_rank)
 
     # Run FF train
-    if validation_batch is not None:
+    if vanilla_final_loss > 0:
         ff_train(
-            model_ff,
-            train_dataloader,
-            test_dataloader,
-            validation_batch,
-            final_vanilla_loss=vanilla_final_loss,
-            Tinterval=6,
-            device=device
-        )
+                model_ff,
+                train_dataloader,
+                test_dataloader,
+                validation_dataloader,
+                final_vanilla_loss=vanilla_final_loss,
+                Tinterval=6,
+                device=device
+            )
     else:
-        print(f"[Rank {dist.get_rank()}] No validation data found for FF training.")
+        print(f"Error during vanilla training. Final loss of {vanilla_final_loss} encountered!")
 
     # Clean up
     dist.destroy_process_group()
