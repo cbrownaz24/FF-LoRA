@@ -204,7 +204,7 @@ def vanilla_train(model, train_dataloader, test_dataloader, num_epochs=5, device
         is_main_process = True
 
     if is_main_process:
-        wandb.init(project="full_cluster_training", name="vanilla_train_run")
+        wandb.init(project="ff-lora-pythia1.4b-ultrachat", name="vanilla_train_run")
         wandb.config.update({
             "learning_rate": 1e-4,
             "optimizer": "SGD",
@@ -292,7 +292,7 @@ def ff_train(model,
         is_main_process = True
 
     if is_main_process:
-        wandb.init(project="full_cluster_training", name="fast_forward_run")
+        wandb.init(project="ff-lora-pythia1.4b-ultrachat", name="fast_forward_run")
         wandb.config.update({
             "learning_rate": 1e-4,
             "optimizer": "SGD",
