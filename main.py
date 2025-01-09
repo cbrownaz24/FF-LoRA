@@ -22,6 +22,15 @@ from fvcore.nn import FlopCountAnalysis
 
 import wandb
 
+import logging
+import warnings
+
+# Hide Python warnings
+warnings.filterwarnings("ignore")
+
+# Hide fvcore logs below CRITICAL
+logging.getLogger("fvcore.nn").setLevel(logging.CRITICAL)
+
 ######################################################
 # MODEL & TOKENIZER LOADING (GLOBAL)
 ######################################################
@@ -29,11 +38,13 @@ model_name = "EleutherAI/pythia-1.4b"
 print(f"Loading tokenizer for {model_name}...")
 tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
 tokenizer.pad_token = tokenizer.eos_token
+print(f"Finished loading tokenizer for {model_name}.")
 
 print(f"Loading base model for {model_name}...")
 base_model = AutoModelForCausalLM.from_pretrained(model_name)
 lora_config = LoraConfig(r=8)
 base_model = get_peft_model(base_model, lora_config)
+print(f'Finished loading base model for {model_name}.')
 
 ######################################################
 # PREPROCESS / FLATTEN / TOKENIZE LOGIC
@@ -431,14 +442,25 @@ def train_process(local_rank, args):
     model = base_model.to(device)
 
     #  Load & shuffle dataset
+    print("Loading train dataset...")
     train_stream_all = load_dataset("HuggingFaceH4/ultrachat_200k",
                                     split='train_sft',
                                     streaming=True)
+    print("Finished loading train dataset.")
+
+    print("Loading test dataset...")
     test_stream_all = load_dataset("HuggingFaceH4/ultrachat_200k",
                                    split='test_sft',
                                    streaming=True)
+    print("Finished loading test dataset.")
+
+    print("Shuffling train dataset...")
     train_stream_all = train_stream_all.shuffle(seed=42, buffer_size=1000)
+    print("Finished shuffling train dataset.")
+
+    print("Shuffling test dataset...")
     test_stream_all = test_stream_all.shuffle(seed=42, buffer_size=1000)
+    print("Finished shuffling test dataset.")
 
     # For validation, let's take the first 32 from the train
     validation_stream = train_stream_all.take(32)
