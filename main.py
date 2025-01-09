@@ -224,7 +224,7 @@ def vanilla_train(model, train_dataloader, test_dataloader, num_epochs=5, device
     else:
         train_flops = 0
 
-    total_flops = 0
+    total_tflops = 0
     start_time = time.time()
     global_step = -1
     avg_test_loss = 0.0  # just to have a default
@@ -233,14 +233,14 @@ def vanilla_train(model, train_dataloader, test_dataloader, num_epochs=5, device
         batch_idx = 0
 
         for batch in train_dataloader:
-            total_flops += train_flops
+            total_tflops += train_flops / 1e12
             loss = train_step(model, batch, optimizer, device)
 
             batch_idx += 1
             global_step += 1
 
             # Test loss each step
-            if global_step % 10 == 0:
+            if global_step % 100 == 0:
                 print("Computing test loss...")
                 avg_test_loss = compute_avg_loss(model, test_dataloader, device)
             test_losses_overall.append(avg_test_loss)
@@ -252,8 +252,7 @@ def vanilla_train(model, train_dataloader, test_dataloader, num_epochs=5, device
                     "test_loss": avg_test_loss,
                     "epoch": epoch + 1,
                     "step": global_step,
-                    "total_flops": total_flops,
-                    "tf_flops": total_flops / 1e12,
+                    "total_flops": total_tflops,
                 })
 
     total_time = time.time() - start_time
@@ -261,12 +260,11 @@ def vanilla_train(model, train_dataloader, test_dataloader, num_epochs=5, device
         wandb.log({
             "final_test_loss": avg_test_loss,
             "training_time_s": total_time,
-            "final_total_flops": total_flops,
-            "final_tf_flops": total_flops / 1e12,
+            "final_total_flops": total_tflops,
         })
         wandb.finish()
 
-    return avg_test_loss, test_losses_overall, total_time, total_flops
+    return avg_test_loss, test_losses_overall, total_time, total_tflops
 
 ######################################################
 # FAST FORWARD TRAINING WITH W&B LOGGING
@@ -319,7 +317,7 @@ def ff_train(model,
     else:
         train_flops = 0
 
-    total_flops = 0
+    total_tflops = 0
     start_time = time.time()
 
     while avg_test_loss > final_vanilla_loss - 0.0001:
@@ -331,7 +329,7 @@ def ff_train(model,
             if num_steps == Tinterval:
                 break
 
-            total_flops += train_flops
+            total_tflops += train_flops / 1e12
             loss = train_step(model, batch, optimizer, device)
 
             avg_test_loss = compute_avg_loss(model, test_dataloader, device)
@@ -343,8 +341,7 @@ def ff_train(model,
                     "train_loss": loss,
                     "test_loss": avg_test_loss,
                     "step_count": step_count,
-                    "total_flops": total_flops,
-                    "tf_flops": total_flops / 1e12
+                    "total_flops": total_tflops,
                 })
             num_steps += 1
 
@@ -356,7 +353,7 @@ def ff_train(model,
         # Fast Forward stage
         while True:
             fast_forward_step(model, delta_weights)
-            total_flops += val_flops
+            total_tflops += val_flops / 1e12
 
             avg_test_loss = compute_avg_loss(model, test_dataloader, device)
             test_losses_overall.append(avg_test_loss)
@@ -365,8 +362,7 @@ def ff_train(model,
                 wandb.log({
                     "test_loss_ff": avg_test_loss,
                     "step_count": step_count,
-                    "total_flops": total_flops,
-                    "tf_flops": total_flops / 1e12
+                    "total_flops": total_tflops,
                 })
 
             if avg_test_loss <= final_vanilla_loss - 0.0001:
@@ -387,12 +383,11 @@ def ff_train(model,
         wandb.log({
             "final_ff_loss": avg_test_loss,
             "training_time_s": total_time,
-            "final_total_flops": total_flops,
-            "final_tf_flops": total_flops / 1e12,
+            "final_total_flops": total_tflops,
         })
         wandb.finish()
 
-    return avg_test_loss, test_losses_overall, total_time, total_flops
+    return avg_test_loss, test_losses_overall, total_time, total_tflops
 
 
 ######################################################
