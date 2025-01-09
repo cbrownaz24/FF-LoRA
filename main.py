@@ -153,11 +153,12 @@ def compute_flops(model, batch, mode='evaluation'):
         print(f"FLOP computation failed: {e}")
         return 0
 
-def train_step(model, batch, optimizer):
+def train_step(model, batch, optimizer, device):
+    input_ids, attention_mask, labels = batch
     outputs = model(
-        input_ids=batch['input_ids'],
-        attention_mask=batch['attention_mask'],
-        labels=batch['labels']
+        input_ids=input_ids.to(device),
+        attention_mask=attention_mask.to(device),
+        labels=labels.to(device)
     )
     loss = outputs.loss
     loss.backward()
@@ -234,7 +235,7 @@ def vanilla_train(model, train_dataloader, test_dataloader, num_epochs=5, device
 
         for batch in train_dataloader:
             total_flops += train_flops
-            loss = train_step(model, batch, optimizer)
+            loss = train_step(model, batch, optimizer, device)
 
             total_train_loss += loss.item()
             batch_idx += 1
@@ -332,7 +333,7 @@ def ff_train(model,
                 break
 
             total_flops += train_flops
-            loss = train_step(model, batch, optimizer)
+            loss = train_step(model, batch, optimizer, device)
 
             avg_test_loss = compute_avg_loss(model, test_dataloader, device).item()
             test_losses_overall.append(avg_test_loss)
