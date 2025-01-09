@@ -220,8 +220,7 @@ def vanilla_train(model, train_dataloader, test_dataloader, num_epochs=5, device
     model.train()
 
     # Compute FLOPs for a sample batch
-    train_iter = iter(train_dataloader)
-    sample_train_batch = next(train_iter, None)
+    sample_train_batch = next(train_dataloader, None)
     if sample_train_batch is not None:
         sample_train_batch = {k: v.to(device) for k, v in sample_train_batch.items()}
         train_flops = compute_flops(model, sample_train_batch, mode="training")
@@ -237,14 +236,7 @@ def vanilla_train(model, train_dataloader, test_dataloader, num_epochs=5, device
         total_train_loss = 0
         batch_idx = 0
 
-        train_iter = iter(train_dataloader)  # re-init the iterator (for streaming)
-        while True:
-            batch = next(train_iter, None)
-            if batch is None:
-                # End of streaming dataset
-                break
-
-            batch = {k: v.to(device) for k, v in batch.items()}
+        for batch in train_dataloader:
             total_flops += train_flops
             loss = train_step(model, batch, optimizer)
 
@@ -253,7 +245,8 @@ def vanilla_train(model, train_dataloader, test_dataloader, num_epochs=5, device
             global_step += 1
 
             # Test loss each step
-            avg_test_loss = compute_avg_test_loss(model, test_dataloader, device).item()
+            if global_step % 100 == 0:
+                avg_test_loss = compute_avg_test_loss(model, test_dataloader, device).item()
             test_losses_overall.append(avg_test_loss)
 
             # Log metrics
@@ -266,11 +259,6 @@ def vanilla_train(model, train_dataloader, test_dataloader, num_epochs=5, device
                     "total_flops": total_flops,
                     "tf_flops": total_flops / 1e12,
                 })
-
-        if batch_idx > 0:
-            avg_train_loss = total_train_loss / batch_idx
-        else:
-            avg_train_loss = 0.0
 
     total_time = time.time() - start_time
     if is_main_process:
