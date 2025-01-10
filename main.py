@@ -235,9 +235,12 @@ def vanilla_train(model, train_dataloader, test_dataloader, num_epochs=5, device
             batch_idx += 1
             global_step += 1
 
-            # Test loss each step
+            # Test loss each 100th step, exclude from training wall clock time
             if global_step % 100 == 0:
+                test_start = time.time()
                 avg_test_loss = compute_avg_loss(model, test_dataloader, device)
+                test_spent = time.time() - test_start
+                start_time += test_spent
             test_losses_overall.append(avg_test_loss)
 
             # Log metrics
@@ -327,7 +330,12 @@ def ff_train(model,
             total_tflops += train_flops / 1e12
             loss = train_step(model, batch, optimizer, device)
 
+            # Compute test loss - exclude from training wall clock time
+            test_start = time.time()
             avg_test_loss = compute_avg_loss(model, test_dataloader, device)
+            test_spent = time.time() - test_start
+            start_time += test_spent
+
             test_losses_overall.append(avg_test_loss)
             step_count += 1
 
