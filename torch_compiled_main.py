@@ -375,11 +375,15 @@ def ff_train(model,
             delta_weights[name] = param.clone() - prev_weights[name]
 
         # Fast Forward stage
-        while True:
+        while avg_test_loss > final_vanilla_loss - 0.0001:
             fast_forward_step(model, delta_weights)
             total_tflops += val_flops / 1e12
 
-            avg_test_loss = compute_avg_loss(model, test_dataloader, device)
+            if step_count % 1000 == 0:
+                test_start = time.time()
+                avg_test_loss = compute_avg_loss(model, test_dataloader, device)
+                test_spent = time.time() - test_start
+                start_time += test_spent
             test_losses_overall.append(avg_test_loss)
 
             if is_main_process:
@@ -389,13 +393,11 @@ def ff_train(model,
                     "total_flops": total_tflops,
                 })
 
-            if avg_test_loss <= final_vanilla_loss - 0.0001:
-                break
-
             val_loss = compute_avg_loss(model, validation_dataloader, device)
             if val_loss >= prev_val_loss:
                 break
             prev_val_loss = val_loss
+            step_count += 1
 
         if avg_test_loss <= final_vanilla_loss - 0.0001:
             break
