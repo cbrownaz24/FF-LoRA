@@ -2,9 +2,7 @@ import os
 import time
 import torch
 import argparse
-import itertools
 import copy
-from torch._dynamo import disable
 
 import torch.distributed as dist
 import torch.multiprocessing as mp
@@ -147,9 +145,7 @@ data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, model=base_model)
 def compute_flops(model, batch, device, mode='evaluation'):
     try:
         input_ids, _, _ = batch
-        with disable():
-            # This forces eager-mode (no Dynamo) for flop analysis
-            analysis = FlopCountAnalysis(model, input_ids.to(device))
+        analysis = FlopCountAnalysis(model, input_ids.to(device))
 
         analysis.tracer_warnings('none')  # Suppress warnings
         forward_flops = analysis.total()
@@ -212,7 +208,7 @@ def compute_avg_loss(model, dataloader, device):
 ######################################################
 # VANILLA TRAINING WITH W&B LOGGING
 ######################################################
-def vanilla_train(model, train_dataloader, test_dataloader, num_epochs=5, device='cuda'):
+def vanilla_train(model, train_dataloader, test_dataloader, train_flops, num_epochs=5, device='cuda'):
     """
     Runs a basic (vanilla) training loop and logs key metrics to Weights & Biases:
         - Train Loss
@@ -239,13 +235,6 @@ def vanilla_train(model, train_dataloader, test_dataloader, num_epochs=5, device
     test_losses_overall = []
     optimizer = torch.optim.SGD(model.parameters(), lr=1e-4, momentum=0.9)
     model.train()
-
-    # Compute FLOPs for a sample batch
-    sample_train_batch = next(iter(train_dataloader), None)
-    if sample_train_batch is not None:
-        train_flops = compute_flops(model, sample_train_batch, device, mode="training")
-    else:
-        train_flops = 0
 
     total_tflops = 0
     start_time = time.time()
@@ -302,6 +291,8 @@ def ff_train(model,
              train_dataloader,
              test_dataloader,
              validation_dataloader,
+             train_flops,
+             val_flops,
              final_vanilla_loss,
              Tinterval=5,
              device='cuda'):
@@ -329,17 +320,6 @@ def ff_train(model,
     avg_test_loss = float('inf')
     prev_val_loss = float('inf')
     step_count = 0
-
-    # Precompute FLOPs
-    sample_validation_batch = next(iter(validation_dataloader), None)
-    val_flops = 0
-    if sample_validation_batch is not None:
-        val_flops = compute_flops(model, sample_validation_batch, device, mode="evaluation")
-
-    sample_train_batch = next(iter(train_dataloader), None)
-    train_flops = 0
-    if sample_train_batch is not None:
-        train_flops = compute_flops(model, sample_train_batch, device, mode="training")
 
     total_tflops = 0
     start_time = time.time()
@@ -477,6 +457,19 @@ def train_process(local_rank, args):
                                        collate_fn=collate_fn, 
                                        num_workers=1, 
                                        pin_memory=True)
+    
+    # Compute FLOPs for a sample batch
+    sample_train_batch = next(iter(train_dataloader), None)
+    if sample_train_batch is not None:
+        train_flops = compute_flops(model, sample_train_batch, device, mode="training")
+    else:
+        train_flops = 0
+    
+    sample_validation_batch = next(iter(validation_dataloader), None)
+    if sample_validation_batch is not None:
+        val_flops = compute_flops(model, sample_validation_batch, device, mode="evaluation")
+    else:
+        val_flops = 0
 
     # Optionally compile the base model before wrapping in DDP.
     # (Whether you compile before or after DDP can depend on your PyTorch version.)
@@ -488,7 +481,7 @@ def train_process(local_rank, args):
 
     # Run vanilla train
     vanilla_final_loss, _, _, _ = vanilla_train(
-        model_vanilla, train_dataloader, test_dataloader, num_epochs=args.num_epochs, device=device
+        model_vanilla, train_dataloader, test_dataloader, train_flops, num_epochs=args.num_epochs, device=device
     )
 
     # Wrap FF model in DDP
@@ -502,7 +495,9 @@ def train_process(local_rank, args):
             train_dataloader,
             test_dataloader,
             validation_dataloader,
-            final_vanilla_loss=vanilla_final_loss,
+            train_flops,
+            val_flops,
+            vanilla_final_loss,
             Tinterval=6,
             device=device
         )
