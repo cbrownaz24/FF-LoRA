@@ -4,6 +4,7 @@ import torch
 import argparse
 import itertools
 import copy
+from torch._dynamo import disable
 
 import torch.distributed as dist
 import torch.multiprocessing as mp
@@ -146,7 +147,10 @@ data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, model=base_model)
 def compute_flops(model, batch, device, mode='evaluation'):
     try:
         input_ids, _, _ = batch
-        analysis = FlopCountAnalysis(model, input_ids.to(device))
+        with disable():
+            # This forces eager-mode (no Dynamo) for flop analysis
+            analysis = FlopCountAnalysis(model, input_ids.to(device))
+
         analysis.tracer_warnings('none')  # Suppress warnings
         forward_flops = analysis.total()
         if mode == 'training':
@@ -252,7 +256,6 @@ def vanilla_train(model, train_dataloader, test_dataloader, num_epochs=5, device
         for batch in train_dataloader:
             total_tflops += train_flops / 1e12
             loss = train_step(model, batch, optimizer, device)
-            global_step += 1
 
             # Test loss every 1000 steps (arbitrary choice)
             if global_step % 1000 == 0:
@@ -273,6 +276,8 @@ def vanilla_train(model, train_dataloader, test_dataloader, num_epochs=5, device
                     "step": global_step,
                     "total_flops": total_tflops,
                 })
+            
+            global_step += 1
 
     total_time = time.time() - start_time
     if is_main_process:
@@ -375,15 +380,11 @@ def ff_train(model,
             delta_weights[name] = param.clone() - prev_weights[name]
 
         # Fast Forward stage
-        while avg_test_loss > final_vanilla_loss - 0.0001:
+        while True:
             fast_forward_step(model, delta_weights)
             total_tflops += val_flops / 1e12
 
-            if step_count % 1000 == 0:
-                test_start = time.time()
-                avg_test_loss = compute_avg_loss(model, test_dataloader, device)
-                test_spent = time.time() - test_start
-                start_time += test_spent
+            avg_test_loss = compute_avg_loss(model, test_dataloader, device)
             test_losses_overall.append(avg_test_loss)
 
             if is_main_process:
@@ -393,11 +394,13 @@ def ff_train(model,
                     "total_flops": total_tflops,
                 })
 
+            if avg_test_loss <= final_vanilla_loss - 0.0001:
+                break
+
             val_loss = compute_avg_loss(model, validation_dataloader, device)
             if val_loss >= prev_val_loss:
                 break
             prev_val_loss = val_loss
-            step_count += 1
 
         if avg_test_loss <= final_vanilla_loss - 0.0001:
             break
