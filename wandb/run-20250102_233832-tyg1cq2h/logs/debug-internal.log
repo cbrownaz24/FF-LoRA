@@ -1,9 +1,0 @@
-{"time":"2025-01-02T23:38:32.352994738Z","level":"INFO","msg":"using version","core version":"0.19.1"}
-{"time":"2025-01-02T23:38:32.353005928Z","level":"INFO","msg":"created symlink","path":"/home/connorb/FF-LoRA/wandb/run-20250102_233832-tyg1cq2h/logs/debug-core.log"}
-{"time":"2025-01-02T23:38:32.56374031Z","level":"INFO","msg":"created new stream","id":"tyg1cq2h"}
-{"time":"2025-01-02T23:38:32.563852179Z","level":"INFO","msg":"stream: started","id":"tyg1cq2h"}
-{"time":"2025-01-02T23:38:32.563889779Z","level":"INFO","msg":"writer: Do: started","stream_id":"tyg1cq2h"}
-{"time":"2025-01-02T23:38:32.563956179Z","level":"INFO","msg":"sender: started","stream_id":"tyg1cq2h"}
-{"time":"2025-01-02T23:38:32.563905379Z","level":"INFO","msg":"handler: started","stream_id":"tyg1cq2h"}
-{"time":"2025-01-02T23:38:32.742339891Z","level":"INFO","msg":"Starting system monitor"}
-{"time":"2025-01-03T01:32:22.800511412Z","level":"INFO","msg":"api: retrying HTTP error","status":500,"url":"https://api.wandb.ai/files/connorbrown059-princeton-university/full_cluster_training/tyg1cq2h/file_stream","body":"{\"error\":\"context deadline exceeded\"}"}

@@ -1,8 +1,0 @@
-{"time":"2025-01-09T08:19:56.95455048Z","level":"INFO","msg":"using version","core version":"0.19.1"}
-{"time":"2025-01-09T08:19:56.95457166Z","level":"INFO","msg":"created symlink","path":"/home/connorb/FF-LoRA/wandb/run-20250109_081956-w5tjprim/logs/debug-core.log"}
-{"time":"2025-01-09T08:19:57.169705941Z","level":"INFO","msg":"created new stream","id":"w5tjprim"}
-{"time":"2025-01-09T08:19:57.169821231Z","level":"INFO","msg":"stream: started","id":"w5tjprim"}
-{"time":"2025-01-09T08:19:57.169876581Z","level":"INFO","msg":"writer: Do: started","stream_id":"w5tjprim"}
-{"time":"2025-01-09T08:19:57.169891481Z","level":"INFO","msg":"sender: started","stream_id":"w5tjprim"}
-{"time":"2025-01-09T08:19:57.169950391Z","level":"INFO","msg":"handler: started","stream_id":"w5tjprim"}
-{"time":"2025-01-09T08:19:57.358925325Z","level":"INFO","msg":"Starting system monitor"}
