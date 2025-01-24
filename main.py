@@ -4,7 +4,6 @@ import torch
 import argparse
 import itertools
 import copy
-from torch._dynamo import disable
 
 import torch.distributed as dist
 import torch.multiprocessing as mp
@@ -42,17 +41,6 @@ tokenizer.pad_token = tokenizer.eos_token
 base_model = AutoModelForCausalLM.from_pretrained(model_name)
 lora_config = LoraConfig(r=8)
 base_model = get_peft_model(base_model, lora_config)
-
-######################################################
-# Torch-Compile Helper
-######################################################
-def compile_model(model, mode="default"):
-    try:
-        model = torch.compile(model, mode=mode)
-        print("Model compiled successfully with torch.compile!")
-    except Exception as e:
-        print(f"Could not compile model: {e}")
-    return model
 
 ######################################################
 # PREPROCESS / FLATTEN / TOKENIZE LOGIC
@@ -147,10 +135,7 @@ data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, model=base_model)
 def compute_flops(model, batch, device, mode='evaluation'):
     try:
         input_ids, _, _ = batch
-        with disable():
-            # This forces eager-mode (no Dynamo) for flop analysis
-            analysis = FlopCountAnalysis(model, input_ids.to(device))
-
+        analysis = FlopCountAnalysis(model, input_ids.to(device))
         analysis.tracer_warnings('none')  # Suppress warnings
         forward_flops = analysis.total()
         if mode == 'training':
@@ -165,20 +150,12 @@ def compute_flops(model, batch, device, mode='evaluation'):
         print(f"FLOP computation failed: {e}")
         return 0
 
-######################################################
-# TRAINING STEPS
-######################################################
 def train_step(model, batch, optimizer, device):
-    # small enough that it can be captured by torch.compile if you wrap the model prior to calling it (????)
     input_ids, attention_mask, labels = batch
-    input_ids = input_ids.to(device)
-    attention_mask = attention_mask.to(device)
-    labels = labels.to(device)
-
     outputs = model(
-        input_ids=input_ids,
-        attention_mask=attention_mask,
-        labels=labels
+        input_ids=input_ids.to(device),
+        attention_mask=attention_mask.to(device),
+        labels=labels.to(device)
     )
     loss = outputs.loss
     loss.backward()
@@ -186,27 +163,23 @@ def train_step(model, batch, optimizer, device):
     optimizer.zero_grad()
     return loss.item()
 
-@torch.no_grad()
 def compute_avg_loss(model, dataloader, device):
     total_batches = 0
     model.eval()
     total_loss = 0.0
-    for batch in dataloader:
-        input_ids, attention_mask, labels = batch
-        input_ids = input_ids.to(device)
-        attention_mask = attention_mask.to(device)
-        labels = labels.to(device)
-
-        outputs = model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            labels=labels
-        )
-        total_loss += outputs.loss.item()
-        total_batches += 1
+    with torch.no_grad():
+        for batch in dataloader:
+            input_ids, attention_mask, labels = batch
+            outputs = model(
+                input_ids=input_ids.to(device),
+                attention_mask=attention_mask.to(device),
+                labels=labels.to(device)
+            )
+            total_loss += outputs.loss.item()
+            total_batches += 1
     model.train()
     if total_batches == 0:
-        return 0.0
+        return torch.tensor(0.0, device=device)
     return total_loss / total_batches
 
 ######################################################
@@ -249,22 +222,25 @@ def vanilla_train(model, train_dataloader, test_dataloader, num_epochs=5, device
 
     total_tflops = 0
     start_time = time.time()
-    global_step = 0
-    avg_test_loss = 0.0
+    global_step = -1
+    avg_test_loss = 0.0  # just to have a default
 
     for epoch in range(num_epochs):
+        batch_idx = 0
+
         for batch in train_dataloader:
             total_tflops += train_flops / 1e12
             loss = train_step(model, batch, optimizer, device)
 
-            # Test loss every 1000 steps (arbitrary choice)
-            if global_step % 1000 == 0:
+            batch_idx += 1
+            global_step += 1
+
+            # Test loss each 100th step, exclude from training wall clock time
+            if global_step % 100 == 0:
                 test_start = time.time()
                 avg_test_loss = compute_avg_loss(model, test_dataloader, device)
                 test_spent = time.time() - test_start
-                # Don't count test time as part of training time
                 start_time += test_spent
-
             test_losses_overall.append(avg_test_loss)
 
             # Log metrics
@@ -276,8 +252,6 @@ def vanilla_train(model, train_dataloader, test_dataloader, num_epochs=5, device
                     "step": global_step,
                     "total_flops": total_tflops,
                 })
-            
-            global_step += 1
 
     total_time = time.time() - start_time
     if is_main_process:
@@ -330,21 +304,20 @@ def ff_train(model,
     prev_val_loss = float('inf')
     step_count = 0
 
-    # Precompute FLOPs
     sample_validation_batch = next(iter(validation_dataloader), None)
-    val_flops = 0
-    if sample_validation_batch is not None:
-        val_flops = compute_flops(model, sample_validation_batch, device, mode="evaluation")
+    val_flops = compute_flops(model, sample_validation_batch, device, mode="evaluation")
 
+    # Precompute FLOPs for training and validation
     sample_train_batch = next(iter(train_dataloader), None)
-    train_flops = 0
     if sample_train_batch is not None:
+        sample_train_batch = {k: v.to(device) for k, v in sample_train_batch.items()}
         train_flops = compute_flops(model, sample_train_batch, device, mode="training")
+    else:
+        train_flops = 0
 
     total_tflops = 0
     start_time = time.time()
 
-    # We'll continue until we get near final_vanilla_loss
     while avg_test_loss > final_vanilla_loss - 0.0001:
         # SGD phase for Tinterval steps
         prev_weights = {name: p.clone() for name, p in model.named_parameters()}
@@ -357,11 +330,11 @@ def ff_train(model,
             total_tflops += train_flops / 1e12
             loss = train_step(model, batch, optimizer, device)
 
-            if step_count % 1000 == 0:
-                test_start = time.time()
-                avg_test_loss = compute_avg_loss(model, test_dataloader, device)
-                test_spent = time.time() - test_start
-                start_time += test_spent
+            # Compute test loss - exclude from training wall clock time
+            test_start = time.time()
+            avg_test_loss = compute_avg_loss(model, test_dataloader, device)
+            test_spent = time.time() - test_start
+            start_time += test_spent
 
             test_losses_overall.append(avg_test_loss)
             step_count += 1
@@ -373,7 +346,8 @@ def ff_train(model,
                     "step_count": step_count,
                     "total_flops": total_tflops,
                 })
-                
+            num_steps += 1
+
         # Compute delta_w
         delta_weights = {}
         for name, param in model.named_parameters():
@@ -397,7 +371,9 @@ def ff_train(model,
             if avg_test_loss <= final_vanilla_loss - 0.0001:
                 break
 
-            val_loss = compute_avg_loss(model, validation_dataloader, device)
+            with torch.no_grad():
+                val_loss = compute_avg_loss(model, validation_dataloader, device)
+
             if val_loss >= prev_val_loss:
                 break
             prev_val_loss = val_loss
@@ -416,6 +392,7 @@ def ff_train(model,
 
     return avg_test_loss, test_losses_overall, total_time, total_tflops
 
+
 ######################################################
 # TRAIN FUNCTION (EACH PROCESS)
 ######################################################
@@ -430,7 +407,7 @@ def train_process(local_rank, args):
     """
     # Initialize the process group
     dist.init_process_group(backend="nccl", init_method="env://")
-
+    
     # Set the device for this process
     torch.cuda.set_device(local_rank)
     device = torch.device("cuda", local_rank)
@@ -442,11 +419,13 @@ def train_process(local_rank, args):
     train_stream_all = load_dataset("HuggingFaceH4/ultrachat_200k",
                                     split='train_sft',
                                     streaming=True)
+
     test_stream_all = load_dataset("HuggingFaceH4/ultrachat_200k",
                                    split='test_sft',
                                    streaming=True)
 
     train_stream_all = train_stream_all.shuffle(seed=42, buffer_size=1000)
+
     test_stream_all = test_stream_all.shuffle(seed=42, buffer_size=1000)
 
     # For validation, let's take the first 32 from the train
@@ -461,26 +440,13 @@ def train_process(local_rank, args):
     test_set = UltraChatIterableDataset(test_stream)
     validation_set = UltraChatIterableDataset(validation_stream)
 
-    # Build DataLoaders
-    train_dataloader = DataLoader(train_set, 
-                                  batch_size=args.batch_size, 
-                                  collate_fn=collate_fn, 
-                                  num_workers=1, 
-                                  pin_memory=True)
-    test_dataloader = DataLoader(test_set, 
-                                 batch_size=args.batch_size, 
-                                 collate_fn=collate_fn, 
-                                 num_workers=1, 
-                                 pin_memory=True)
-    validation_dataloader = DataLoader(validation_set, 
-                                       batch_size=args.batch_size, 
-                                       collate_fn=collate_fn, 
-                                       num_workers=1, 
-                                       pin_memory=True)
+    # Limit data for demonstration
+    # train_set = LimitDataset(train_set, limit=20000)
 
-    # Optionally compile the base model before wrapping in DDP.
-    # (Whether you compile before or after DDP can depend on your PyTorch version.)
-    model = compile_model(model, mode="reduce-overhead")
+    # Build DataLoaders
+    train_dataloader = DataLoader(train_set, batch_size=args.batch_size, collate_fn=collate_fn, num_workers=1, pin_memory=True)
+    test_dataloader = DataLoader(test_set, batch_size=args.batch_size, collate_fn=collate_fn, num_workers=1, pin_memory=True)
+    validation_dataloader = DataLoader(validation_set, batch_size=args.batch_size, collate_fn=collate_fn, num_workers=1, pin_memory=True)
 
     # Wrap vanilla model in DDP
     model_vanilla = copy.deepcopy(model)
@@ -498,14 +464,14 @@ def train_process(local_rank, args):
     # Run FF train
     if vanilla_final_loss > 0:
         ff_train(
-            model_ff,
-            train_dataloader,
-            test_dataloader,
-            validation_dataloader,
-            final_vanilla_loss=vanilla_final_loss,
-            Tinterval=6,
-            device=device
-        )
+                model_ff,
+                train_dataloader,
+                test_dataloader,
+                validation_dataloader,
+                final_vanilla_loss=vanilla_final_loss,
+                Tinterval=6,
+                device=device
+            )
     else:
         print(f"Error during vanilla training. Final loss of {vanilla_final_loss} encountered!")
 
