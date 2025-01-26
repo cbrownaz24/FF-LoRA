@@ -484,6 +484,10 @@ def train_process(local_rank, args):
         model_vanilla, train_dataloader, test_dataloader, train_flops, num_epochs=args.num_epochs, device=device
     )
 
+    # Cleanup
+    del model_vanilla
+    torch.cuda.empty_cache()
+
     # Wrap FF model in DDP
     model_ff = copy.deepcopy(model)
     model_ff = DDP(model_ff, device_ids=[local_rank], output_device=local_rank)
