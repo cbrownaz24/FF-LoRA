@@ -284,7 +284,7 @@ def vanilla_train(model, train_dataloader, test_dataloader, train_flops, num_epo
 ######################################################
 def fast_forward_step(model, delta_weights):
     for name, param in model.named_parameters():
-        param.data.add_(delta_weights[name])
+        param.data.add_(delta_weights[name].to(param.device))
     return model
 
 def ff_train(model,
@@ -357,7 +357,7 @@ def ff_train(model,
         # Compute delta_w
         delta_weights = {}
         for name, param in model.named_parameters():
-            delta_weights[name] = param.clone() - prev_weights[name]
+            delta_weights[name] = (param.clone() - prev_weights[name]).cpu()
 
         # Fast Forward stage
         while True:
@@ -475,25 +475,26 @@ def train_process(local_rank, args):
     # (Whether you compile before or after DDP can depend on your PyTorch version.)
     model = compile_model(model, mode="reduce-overhead")
 
-    # Wrap vanilla model in DDP
-    model_vanilla = copy.deepcopy(model)
-    model_vanilla = DDP(model_vanilla, device_ids=[local_rank], output_device=local_rank)
+    # # Wrap vanilla model in DDP
+    # model_vanilla = copy.deepcopy(model)
+    # model_vanilla = DDP(model_vanilla, device_ids=[local_rank], output_device=local_rank)
 
-    # Run vanilla train
-    vanilla_final_loss, _, _, _ = vanilla_train(
-        model_vanilla, train_dataloader, test_dataloader, train_flops, num_epochs=args.num_epochs, device=device
-    )
+    # # Run vanilla train
+    # vanilla_final_loss, _, _, _ = vanilla_train(
+    #     model_vanilla, train_dataloader, test_dataloader, train_flops, num_epochs=args.num_epochs, device=device
+    # )
 
-    # Cleanup
-    del model_vanilla
-    torch.cuda.empty_cache()
+    # # Cleanup
+    # del model_vanilla
+    # torch.cuda.empty_cache()
 
     # Wrap FF model in DDP
     model_ff = copy.deepcopy(model)
     model_ff = DDP(model_ff, device_ids=[local_rank], output_device=local_rank)
 
     # Run FF train
-    if vanilla_final_loss > 0:
+    #if vanilla_final_loss > 0:
+    if True: # for debugging
         ff_train(
             model_ff,
             train_dataloader,
@@ -501,7 +502,7 @@ def train_process(local_rank, args):
             validation_dataloader,
             train_flops,
             val_flops,
-            vanilla_final_loss,
+            6.61154,
             Tinterval=6,
             device=device
         )
