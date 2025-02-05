@@ -41,6 +41,9 @@ base_model = AutoModelForCausalLM.from_pretrained(model_name)
 lora_config = LoraConfig(r=8)
 base_model = get_peft_model(base_model, lora_config)
 
+base_model.config.use_cache = False
+base_model.gradient_checkpointing_enable()
+
 ######################################################
 # Torch-Compile Helper
 ######################################################
@@ -475,26 +478,26 @@ def train_process(local_rank, args):
     # (Whether you compile before or after DDP can depend on your PyTorch version.)
     model = compile_model(model, mode="reduce-overhead")
 
-    # # Wrap vanilla model in DDP
-    # model_vanilla = copy.deepcopy(model)
-    # model_vanilla = DDP(model_vanilla, device_ids=[local_rank], output_device=local_rank)
+    # Wrap vanilla model in DDP
+    model_vanilla = copy.deepcopy(model)
+    model_vanilla = DDP(model_vanilla, device_ids=[local_rank], output_device=local_rank)
 
-    # # Run vanilla train
-    # vanilla_final_loss, _, _, _ = vanilla_train(
-    #     model_vanilla, train_dataloader, test_dataloader, train_flops, num_epochs=args.num_epochs, device=device
-    # )
+    # Run vanilla train
+    vanilla_final_loss, _, _, _ = vanilla_train(
+        model_vanilla, train_dataloader, test_dataloader, train_flops, num_epochs=args.num_epochs, device=device
+    )
 
-    # # Cleanup
-    # del model_vanilla
-    # torch.cuda.empty_cache()
+    # Cleanup
+    del model_vanilla
+    torch.cuda.empty_cache()
 
     # Wrap FF model in DDP
     model_ff = copy.deepcopy(model)
     model_ff = DDP(model_ff, device_ids=[local_rank], output_device=local_rank)
 
     # Run FF train
-    #if vanilla_final_loss > 0:
-    if True: # for debugging
+    if vanilla_final_loss > 0:
+    # if True: # for debugging
         ff_train(
             model_ff,
             train_dataloader,
@@ -502,7 +505,7 @@ def train_process(local_rank, args):
             validation_dataloader,
             train_flops,
             val_flops,
-            6.61154,
+            vanilla_final_loss,
             Tinterval=6,
             device=device
         )
